@@ -67,6 +67,7 @@ uint8_t intprotect;
 #define test_C() (reg8[FLAGS] & 0x01)
 
 static uint8_t intpend;
+static uint8_t halted;
 
 static const uint8_t parity[0x100] = {
 	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
@@ -357,7 +358,10 @@ int i8085_exec(int cycles) {
 		if (intpend & INT_NMI) {	/* TRAP - NMI */
 			INTE = 0;
 			intpend &= ~8;
-			i8085_push(reg_PC);
+			if (halted)
+				i8085_push(reg_PC + 1);
+			else
+				i8085_push(reg_PC);
 			reg_PC = 0x24;
 			cycles -= 12; /* Check me */
 		/* The others are level except 0x3C which is positive edge.
@@ -376,11 +380,15 @@ int i8085_exec(int cycles) {
 				vec = 0x2C;
 			else
 				vec = 0x38;
-			i8085_push(reg_PC);
+			if (halted)
+				i8085_push(reg_PC + 1);
+			else
+				i8085_push(reg_PC);
 			reg_PC = vec;
 			cycles -= 12;	/* Check me */
 		}
 		intprotect = 0;
+		halted = 0;
 
 		opcode = i8085_read(reg_PC++);
 
@@ -622,6 +630,7 @@ int i8085_exec(int cycles) {
 			case 0x76: //HLT - halt processor
 				reg_PC--;
 				cycles -= 7;
+				halted = 1;
 				break;
 			case 0x00: //NOP - no operation
 				cycles -= 4;
