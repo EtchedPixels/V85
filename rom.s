@@ -34,7 +34,7 @@ start:
 	call print
 
 	mvi a,1
-	mvi e,0
+	lxi d,0
 	lxi h,0x8000
 bankcheck:
 	mvi c,0xAA
@@ -42,21 +42,23 @@ bankcheck:
 	call 0xf000
 	mov a,c
 	cpi 0xAA
-	jnz notfound
+	jnz bankabsent
 	mvi c,0x55
 	mov a,b
 	call 0xf000
 	mov a,c
 	cpi 0x55
 	jz bankfound
-notfound:
-	mvi a,'N'
+bankabsent:
+	mvi a,' '
 	jmp banknext
 bankfound:
-	mvi a,'Y'
 	inr e
+	mov a,d
+	adi 48
 banknext:
 	call pchar
+	inr d
 	mov a,b
 	add a
 	jnz bankcheck
