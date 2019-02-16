@@ -31,14 +31,9 @@ static uint16_t tstate_steps = 300;	/* Set me properly */
 
 #define TRACE_MEM	1
 #define TRACE_IO	2
-#define TRACE_ROM	4
 #define TRACE_UNK	8
-#define TRACE_SIO	16
-#define TRACE_512	32
-#define TRACE_RTC	64
-#define TRACE_ACIA	128
-#define TRACE_CTC	256
-#define TRACE_CPLD	512
+#define TRACE_ACIA	16
+#define TRACE_BANK	32
 
 static int trace = 0;
 
@@ -250,6 +245,8 @@ static void timer_tick(void)
 
 static void bank_write(uint8_t bank)
 {
+	if (trace & TRACE_BANK)
+		fprintf(stderr, "Bank select %02X\n", bank);
 	switch(bank) {
 	case 0:
 		banknum = 8;
