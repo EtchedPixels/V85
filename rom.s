@@ -8,6 +8,9 @@
 
 start:
 	di
+	! Set up the ACIA
+	mvi a,0x16
+	out 0
 	!
 	!	As early as possible display something
 	!
