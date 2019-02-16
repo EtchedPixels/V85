@@ -84,7 +84,7 @@ banknext:
 	out 0x12	! Count
 	mvi a,0x20	! Read Sector
 	out 0x17 	! command
-	lxi h,0xFF00	! buffer target
+	lxi h,0xFE00	! buffer target
 	call waitdrq
 	mvi b,0
 sector:
@@ -97,12 +97,12 @@ sector:
 	dcr b
 	jnz sector
 	call waitready
-	lda 0xFF00
+	lda 0xFE00
 	cpi 0x85
 	jnz badload
-	lda 0xFF01
+	lda 0xFE01
 	cpi 0x80
-	jz 0xFF02
+	jz 0xFE02
 badload:
 	lxi h,badboot
 	call print
