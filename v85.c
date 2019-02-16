@@ -26,8 +26,12 @@ static uint8_t bankram[8][49152];
 
 static uint8_t fast = 0;
 static uint8_t banknum;
+static uint8_t bankmap = 0x0f;
 
-static uint16_t tstate_steps = 300;	/* Set me properly */
+/* We do 6MHz so 6,000,000 tstates a second. That works out at 30,000 per
+   5ms working period, each of which we split 100 ways */
+
+static uint16_t tstate_steps = 300;
 
 #define TRACE_MEM	1
 #define TRACE_IO	2
@@ -203,6 +207,7 @@ static void acia_write(uint16_t addr, uint8_t val)
 		write(1, &val, 1);
 		/* Clear any existing int state and tx empty */
 		acia_status &= ~0x82;
+		acia_irq_compute();
 		break;
 	}
 }
@@ -277,9 +282,12 @@ static void bank_write(uint8_t bank)
 		break;
 	default:
 		fprintf(stderr, "Invalid bank setting %02X\n", bank);
+		fprintf(stderr, "PC = %04X\n", i8085_read_reg16(PC));
 		banknum = 8;
 		break;
 	}
+	if (!(bank & bankmap))
+		banknum = 8;
 }
 
 uint8_t i8085_inport(uint8_t addr)
@@ -331,7 +339,7 @@ static void exit_cleanup(void)
 
 static void usage(void)
 {
-	fprintf(stderr, "v85: [-f] [-d debug]\n");
+	fprintf(stderr, "v85: [-b banks] [-f] [-d debug]\n");
 	exit(EXIT_FAILURE);
 }
 
@@ -340,9 +348,13 @@ int main(int argc, char *argv[])
 	static struct timespec tc;
 	int opt;
 	int fd;
+	int cycles;
 
-	while ((opt = getopt(argc, argv, "d:f")) != -1) {
+	while ((opt = getopt(argc, argv, "b:d:f")) != -1) {
 		switch (opt) {
+		case 'b':
+			bankmap = atoi(optarg) | 1;
+			break;
 		case 'd':
 			trace = atoi(optarg);
 			break;
@@ -410,12 +422,14 @@ int main(int argc, char *argv[])
 
 	/* We run 300 cycles per I/O check, do that 100 times then poll the
 	   slow stuff and nap for 5ms. */
-	/* FIXME: proper timings */
+
+	cycles = tstate_steps;
+
 	while (1) {
 		int i;
-		/* 36400 T states */
+		/* 30000 T states */
 		for (i = 0; i < 100; i++) {
-			i8085_exec(tstate_steps);
+			cycles = tstate_steps + i8085_exec(cycles);
 			acia_timer();
 		}
 		/* Do 5ms of I/O and delays */
