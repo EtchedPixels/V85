@@ -701,9 +701,9 @@ int i8085_exec(int cycles) {
 				break;
 			case 0x30:
 				/* SIM */
-				if (reg_IM & 0x08)
+				if (reg8[A] & 0x08)
 					reg_IM = reg8[A] & 0x07;
-				if (reg_IM & 0x10)
+				if (reg8[A] & 0x10)
 					intpend &= ~INT_RST75;
 				/* We don't care about the bit bang port */
 				cycles -= 4;
