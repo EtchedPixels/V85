@@ -13,6 +13,9 @@ start:
 	lxi h,Ok
 	call print
 
+	mvi a,1
+	out 0x40	! Page in RAM not ROM
+
 	lxi h,0x0100
 	lxi sp,0xfe00
 

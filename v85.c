@@ -1,9 +1,9 @@
 /*
  *	Platform features
  *
- *	8085 at 6MHz
- *	Motorola 6850 at 0x01/0x02
- *	IDE at 0x10-0x17 no high or control access
+ *	8085 at 6MHz with some interrupt lines directly wired
+ *	Motorola 6850 at 0x00/0x01
+ *	IDE at 0x10-0x17 no high or control access no interrupt
  *	Page select at 0x40
  *	Interrupt/timer at 0xFE
  */
@@ -23,9 +23,10 @@
 
 static uint8_t baseram[16384];
 static uint8_t bankram[8][49152];
+static uint8_t rom[512];
 
 static uint8_t fast = 0;
-static uint8_t banknum;
+static uint8_t banknum = 8;	/* bank reg starts 0 */
 static uint8_t bankmap = 0x0f;
 
 /* We do 6MHz so 6,000,000 tstates a second. That works out at 30,000 per
@@ -44,12 +45,11 @@ static int trace = 0;
 
 uint8_t i8085_read(uint16_t addr)
 {
-	uint8_t dummy = 0xFF;
 	uint8_t *p = bankram[banknum] + addr;
 	if (addr >= 0xC000)
 		p = baseram + (addr & 0x3FFF);
-	else if (banknum == 8) 	/* Invalid setting */
-		p = &dummy;
+	else if (banknum == 8) 	/* ROM */
+		p = rom + (addr & 0x1FF);
 	if (trace & TRACE_MEM)
 		fprintf(stderr, "R[%d] %04X = %02X\n", banknum, addr, *p);
 	return *p;
@@ -62,7 +62,7 @@ void i8085_write(uint16_t addr, uint8_t val)
 		p = baseram + (addr & 0x3FFF);
 	else if (banknum == 8) {
 		if (trace & TRACE_MEM)
-			fprintf(stderr, "W[%d] %04X: bad bank.\n",
+			fprintf(stderr, "W[%d] %04X: ROM write.\n",
 					banknum, addr);
 		return;
 	}
@@ -373,7 +373,7 @@ int main(int argc, char *argv[])
 		perror("v85.rom");
 		exit(EXIT_FAILURE);
 	}
-	if (read(fd, bankram[0], 512) < 8) {
+	if (read(fd, rom, 512) < 8) {
 		fprintf(stderr, "v85: short rom 'v85.rom'.\n");
 		exit(EXIT_FAILURE);
 	}

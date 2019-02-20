@@ -163,6 +163,6 @@ scanit:				! A tiny probe routine (9 bytes)
 	out 0x40
 	mov m,c
 	mov c,m
-	mvi a,1
+	xra a
 	out 0x40
 	ret
