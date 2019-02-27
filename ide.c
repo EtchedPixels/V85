@@ -77,6 +77,8 @@ const uint8_t ide_magic[8] = {
   '1','D','E','D','1','5','C','0'
 };
 
+#if 0
+
 static char *charmap(uint8_t v)
 {
   static char cbuf[3];
@@ -107,6 +109,7 @@ static void hexdump(uint8_t *bp)
     fprintf(stderr, "\n");
   }
 }
+#endif
 
 static uint16_t le16(uint16_t v)
 {
