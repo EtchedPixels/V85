@@ -1,9 +1,12 @@
 
-CFLAGS = -Wall -pedantic -O2
+CFLAGS = -Wall -pedantic -O2 -Ilib765/include/
 
 all:	v85 makedisk v85.rom bootblock loader
 
-v85:	v85.o intel_8085_emulator.o ide.o
+lib765/lib/lib765.a: lib765
+	(cd lib765/lib; make)
+
+v85:	v85.o intel_8085_emulator.o ide.o lib765/lib/lib765.a
 	cc -g3 $^ -o v85
 
 ack2rom: ack2rom.c
@@ -30,4 +33,4 @@ clean:
 	rm -f *.o *~ v85 makedisk v85.rom rom.bin ack2rom
 	rm -f bootblock.bin bootblock
 	rm -f loader.bin loader
-
+	(cd lib765/lib; make clean)
