@@ -2,10 +2,22 @@
  *	Platform features
  *
  *	8085 at 6MHz with some interrupt lines directly wired
- *	Motorola 6850 at 0x00/0x01
+ *	Motorola 6850 ACIA at 0x00/0x01
  *	IDE at 0x10-0x17 no high or control access no interrupt
+ *	NEC765 FDC at 0x18-0x1F no interrupt (currently)
+ *	I/O based RAMdrive at 0xC6/C7 (CompuPro M)
+ *	Dual Systems CLK-24 at 0xF0/F1 (no interrupt set)
+ *
+ *
  *	Page select at 0x40
  *	Interrupt/timer at 0xFE
+ *
+ *	Possible additions to consider
+ *	- Compupro Disk 3 or a generic ST506 disk interface
+ *	- DMA on the FDC
+ *
+ *	In progress
+ *	- ALT256
  */
 
 #include <stdio.h>
@@ -20,6 +32,9 @@
 #include <errno.h>
 #include "intel_8085_emulator.h"
 #include "ide.h"
+#include "765.h"
+
+static volatile uint8_t done;
 
 static uint8_t baseram[16384];
 static uint8_t bankram[8][49152];
@@ -28,6 +43,10 @@ static uint8_t rom[512];
 static uint8_t fast = 0;
 static uint8_t banknum = 8;	/* bank reg starts 0 */
 static uint8_t bankmap = 0x0f;
+
+static FDC_PTR fdc;
+static FDRV_PTR drive_a, drive_b, drive_c;
+
 
 /* We do 6MHz so 6,000,000 tstates a second. That works out at 30,000 per
    5ms working period, each of which we split 100 ways */
@@ -108,6 +127,11 @@ static unsigned int next_char(void)
 		c = '\r';
 	return c;
 }
+
+/*
+ *	6850 at 0/1. A fairly common setup. The only oddity is we use
+ *	the 8085 interrupt lines.
+ */
 
 static uint8_t acia_status = 2;
 static uint8_t acia_config;
@@ -211,6 +235,11 @@ static void acia_write(uint16_t addr, uint8_t val)
 		break;
 	}
 }
+
+/*
+ *	Modern 8bit IDE adapter (it wouldn't be hard to tweak this to be
+ *	a more period appropriate ST506 interface..)
+ */
 struct ide_controller *ide0;
 
 static uint8_t my_ide_read(uint16_t addr)
@@ -222,6 +251,243 @@ static void my_ide_write(uint16_t addr, uint8_t val)
 {
 	ide_write8(ide0, addr, val);
 }
+
+/*
+ *	Classic NEC765A style floppy disk interface with 5.25" Drives
+ */
+static uint8_t fdc_ctrl;
+
+static uint8_t fdc_read(uint8_t addr)
+{
+	switch(addr & 0x03) {
+	case 0:
+		return fdc_read_data(fdc);
+	case 1:
+		return fdc_read_ctrl(fdc);
+	case 3:
+		return fdc_ctrl;
+	}
+	return 0xFF;
+}
+
+static void fdc_write(uint8_t addr, uint8_t val)
+{
+	addr &= 3;
+	switch(addr) {
+	case 0:
+		fdc_write_data(fdc, val);
+		break;
+	case 1:
+		break;
+	case 2:
+		fdc_set_terminal_count(fdc, val & 0x80);
+		break;
+	case 3:
+		fdc_ctrl = val;
+		fdc_set_motor(fdc, (val & 0x01) ? 0x0F: 0x00);
+		break;
+	}
+}
+
+/*
+ *	CompuPro M Drive alike
+ *
+ *	A very simple I/O port RAM drive. Note that the CP/M parity and other
+ *	goodies are all done in software. The hardware is really simple.
+ *
+ *	Three 74LS161 counters. They provide the bits A0-A21 (and 2 spare).
+ *	A write to them writes to the low 8bits whilst the previous bits
+ *	ripple upwards. A0-A18 fed 512K of DRAM, A19-A21 compare with the
+ *	board switches to see which board is selected. Simples!
+ *
+ *	We only model one board
+ */
+
+static uint8_t mdrive[512 * 1024];
+static uint32_t mdptr;
+
+static uint8_t mdrive_read(uint8_t addr)
+{
+	uint8_t r = 0xff;
+	addr &= 1;
+	if (addr == 0) {
+		if (mdptr < sizeof(mdrive))
+			r = mdrive[mdptr];
+		mdptr++;
+	}
+	mdptr &= 0x3FFFFF;
+	return r;
+}
+
+static void mdrive_write(uint8_t addr, uint8_t val)
+{
+	addr &= 1;
+	if (addr == 0) {
+		if (mdptr < sizeof(mdrive))
+			mdrive[mdptr] = val;
+		mdptr++;
+	} else {
+		mdptr <<= 8;
+		mdptr |= val;
+	}
+	mdptr &= 0x3FFFFF;
+}
+
+/*
+ *	ALT256. We need to write some rendering support and SDL code for
+ *	this to be any use!
+ */
+static uint8_t alt256[256 * 256];
+static uint8_t alt256_x, alt256_y;
+static uint8_t alt256_wipe;
+static uint8_t alt256_wval;
+static uint8_t alt256_clock;
+
+static uint8_t alt256_read(uint8_t addr)
+{
+	uint8_t r = 0xff;
+	addr &= 3;
+	if (addr == 0) {
+		r = alt256_wipe;
+		/* This is a guestimate of vblank */
+		if (alt256_clock < 2 || alt256_clock > 16)
+			r |= 2;
+		r |= 0xFC;
+	}
+	return r;
+}
+
+static void alt256_write(uint8_t addr, uint8_t val)
+{
+	addr &= 3;
+	switch(addr) {
+	case 0:
+		if (alt256_wipe)
+			return;
+		/* We should check this is 3.4us or more after the last ? */
+		alt256[256 * alt256_y + alt256_x] = (val & 1) ? 0xFF : 0x00;
+	case 1:
+		alt256_x = val;
+		break;
+	case 2:
+		alt256_y = val;
+		break;
+	case 3:
+		alt256_wipe = 1;
+		alt256_wval = val & 1;
+		break;
+	}
+}
+
+/* Called every 5ms */
+static void alt256_tick(void)
+{
+	alt256_clock++;
+	if (alt256_clock == 20) {	/* Frame end */
+		if (alt256_wipe) {
+			memset(alt256, (alt256_wval & 1) ? 0xFF : 0x00, sizeof(alt256));
+			alt256_wipe = 0;
+		}
+	}
+}
+
+/*
+ *	RTC: Emulated as a read only device with no interrupt for now
+ *
+ *	Based on the Dual systems Clk-24 with the write protect jumper set
+ *	and in 24 hour mode with the interrupt wired via 8085 RST55 at once
+ *	per second.
+ */
+
+static uint8_t msmctrl;
+static uint8_t msmintr;
+static uint8_t msmien;
+static uint8_t msmhold;
+
+static uint8_t msm5832_read(uint8_t addr)
+{
+	static time_t t;
+	struct tm *tm;
+
+	addr &= 1;
+	if (addr == 0) {
+		if (msmhold == 0) {
+			time(&t);
+			if (!(msmctrl & 0x80))
+				msmhold = 10;	/* 1/2 second */
+		}
+		tm = localtime(&t);
+		if (tm == NULL) {
+			fprintf(stderr, "localtime error.\n");
+			exit(1);
+		}
+		switch(msmctrl) {
+			case 0:
+				return tm->tm_sec % 10;
+			case 1:
+				return tm->tm_sec / 10;
+			case 2:
+				return tm->tm_min % 10;
+			case 3:
+				return tm->tm_min / 10;
+			case 4:
+				return tm->tm_hour % 10;
+			case 5:
+				return tm->tm_hour / 10;
+			case 6:
+				return tm->tm_wday;
+			case 7:
+				return tm->tm_mday % 10;
+			case 8:
+				/* FIXME: leap year flag */
+				return tm->tm_mday / 10;
+			case 9:
+				return tm->tm_mon % 10;
+			case 10:
+				return tm->tm_mon / 10;
+			case 11:
+				return tm->tm_year % 10;
+			case 12:
+				return (tm->tm_year / 10) % 10;
+		}
+	}
+	return 0xFF;
+}
+
+static void msm5832_write(uint8_t addr, uint8_t val)
+{
+	switch(addr & 1) {
+		case 0:
+			break;
+		case 1:
+			if (msmctrl == 0x8F)
+				msmien = 1;
+			if (msmctrl == 0x8E)
+				i8085_clear_int(INT_RST55);
+			msmctrl = val & 0x8F;
+			if (val & 0xC0)
+				msmhold = 0;
+			break;
+	}
+}
+
+static void msm5832_tick(void)
+{
+	if (msmhold)
+		msmhold--;
+	msmintr++;
+	if (msmintr == 20) {
+		msmintr = 0;
+		if (msmien)
+			i8085_set_int(INT_RST55);
+	}
+}
+
+/*
+ *	Simple timer: modelled on the MITS VI/RTC but only the RTC side. We
+ *	ignore emulation of the 880-VI interrupt structure or indeed anything
+ *	but 8085 interrupt lines.
+ */
 
 static uint8_t timer_val;
 static uint8_t timer_count;
@@ -298,6 +564,14 @@ uint8_t i8085_inport(uint8_t addr)
 		return acia_read(addr & 1);
 	if (addr >= 0x10 && addr <= 0x17)
 		return my_ide_read(addr & 7);
+	if (addr >= 0x18 && addr <= 0x1f)
+		return fdc_read(addr);
+	if (addr >= 0xC6 && addr <= 0xC7)
+		return mdrive_read(addr);
+	if (addr >= 0xE0 && addr <= 0xE3)
+		return alt256_read(addr);
+	if (addr >= 0xF0 && addr <= 0xF1)
+		return msm5832_read(addr);
 	if (addr == 0xFE)
 		timer_read();
 	if (trace & TRACE_UNK)
@@ -313,8 +587,16 @@ void i8085_outport(uint8_t addr, uint8_t val)
 		acia_write(addr & 1, val);
 	else if (addr >= 0x10 && addr <= 0x17)
 		my_ide_write(addr & 7, val);
+	else if (addr >= 0x18 && addr <= 0x1F)
+		fdc_write(addr, val);
 	else if (addr == 0x40)
 		bank_write(val);
+	else if (addr >= 0xC6 && addr <= 0xC7)
+		mdrive_write(addr, val);
+	else if (addr >= 0xE0 && addr <= 0xE3)
+		alt256_write(addr, val);
+	else if (addr >= 0xF0 && addr <= 0xF1)
+		msm5832_write(addr, val);
 	else if (addr == 0xFD) {
 		printf("trace set to %d\n", val);
 		trace = val;
@@ -328,8 +610,7 @@ static struct termios saved_term, term;
 
 static void cleanup(int sig)
 {
-	tcsetattr(0, TCSADRAIN, &saved_term);
-	exit(1);
+	done = 1;
 }
 
 static void exit_cleanup(void)
@@ -393,6 +674,36 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	fdc = fdc_new();
+
+	if (access("drivea.dsk", 0) == 0) {
+		drive_a = fd_newdsk();
+		fd_settype(drive_a, FD_525);
+		fd_setheads(drive_a, 2);
+		fd_setcyls(drive_a, 80);
+		fdd_setfilename(drive_a, "drivea.dsk");
+	} else
+		drive_a = fd_new();
+
+	if (access("driveb.dsk", 0) == 0) {
+		drive_b = fd_newdsk();
+		fd_settype(drive_a, FD_525);
+		fd_setheads(drive_a, 2);
+		fd_setcyls(drive_a, 80);
+		fdd_setfilename(drive_a, "driveb.dsk");
+	} else
+		drive_b = fd_new();
+
+	drive_c = fd_new();
+
+	fdc_reset(fdc);
+	fdc_setisr(fdc, NULL);
+
+	fdc_setdrive(fdc, 0, drive_a);
+	fdc_setdrive(fdc, 1, drive_b);
+	fdc_setdrive(fdc, 2, drive_c);
+	fdc_setdrive(fdc, 3, drive_c);
+
 	/* 5ms - it's a balance between nice behaviour and simulation
 	   smoothness */
 	tc.tv_sec = 0;
@@ -425,7 +736,7 @@ int main(int argc, char *argv[])
 
 	cycles = tstate_steps;
 
-	while (1) {
+	while (!done) {
 		int i;
 		/* 30000 T states */
 		for (i = 0; i < 100; i++) {
@@ -436,6 +747,15 @@ int main(int argc, char *argv[])
 		if (!fast)
 			nanosleep(&tc, NULL);
 		timer_tick();
+		msm5832_tick();
+		alt256_tick();
 	}
+	fd_eject(drive_a);
+	fd_eject(drive_b);
+	fd_eject(drive_c);
+	fdc_destroy(&fdc);
+	fd_destroy(&drive_a);
+	fd_destroy(&drive_b);
+	fd_destroy(&drive_c);
 	exit(0);
 }
