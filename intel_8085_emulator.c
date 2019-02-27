@@ -635,8 +635,7 @@ int i8085_exec(int cycles) {
 			case 0x00: //NOP - no operation
 				cycles -= 4;
 				break;
-			case 0x08:
-				/* SUB HL,BC */
+			case 0x08: // DSUB - 16bit subtraction
 				/* Does SUB L,C; SBC H,B for flags */
 				temp8 = reg8[C];
 				temp16 = (uint16_t)reg8[L] - (uint16_t)temp8;
@@ -662,7 +661,7 @@ int i8085_exec(int cycles) {
 				reg8[H] = (uint8_t)temp16;
 				cycles -= 10;
 				break;					
-			case 0x10:
+			case 0x10: // ARHL
 				if (reg16_HL & 1)
 					set_C();
 				else
@@ -674,8 +673,7 @@ int i8085_exec(int cycles) {
 				/* Check K V */
 				cycles -= 7;
 				break;
-			case 0x18:
-				/* RDEL */
+			case 0x18: // RDEL
 				/* Affects only CY and V */
 				temp16 = reg16_DE;
 				i8085_write_reg16(DE, (reg16_DE << 1) + test_C());
@@ -686,21 +684,18 @@ int i8085_exec(int cycles) {
 				cycles -= 10;
 				/* FIXME: how is V affected */
 				break;
-			case 0x20:
-				/* RIM */
+			case 0x20: // RIM
 				temp8 = reg_IM & 0x07;
 				if (intpend & INT_RST75)
 					temp8 |= 0x10;
 				reg8[A] = temp8;
 				cycles -= 4;
 				break;
-			case 0x28:
-				/* LDHI */
+			case 0x28: // LDHI
 				i8085_write_reg16(DE, reg16_HL + i8085_read(reg_PC++));
 				cycles -= 10;
 				break;
-			case 0x30:
-				/* SIM */
+			case 0x30: // SIM
 				if (reg8[A] & 0x08)
 					reg_IM = reg8[A] & 0x07;
 				if (reg8[A] & 0x10)
@@ -708,8 +703,7 @@ int i8085_exec(int cycles) {
 				/* We don't care about the bit bang port */
 				cycles -= 4;
 				break;
-			case 0x38:
-				/* LDSI */
+			case 0x38: // LDSI
 				i8085_write_reg16(DE, reg_SP + i8085_read(reg_PC++));
 				cycles -= 10;
 				break;
