@@ -1,0 +1,33 @@
+The emulator models the following system
+
+8085 processor at 6MHz
+0-8 48K banked RAM blocks at 0000-BFFF
+512 byte ROM for bootup
+16K RAM at C000-FFFF (common)
+
+The memory set up and peripherals are designed to resemble a period system
+with a modern 8bit IDE card also added
+
+The peripherals are:
+6850 ACIA at I/O port 0/1 interrupt RST 7.5 mapped to stdin/stdout
+8bit IDE controlled at 0x10-0x17 (no interrupt)
+NEC765 floppy controller at 0x18-0x1B (no interrupts, DMA in progress)
+CompuPro M style RAMdrive at 0xC6/C7
+Dual Systems CLK-24 at 0xF0/F1
+Simple timer interrupt controller at 0xFE interrupt RST 6.5
+Bank selection at 0x40 modelled on various S100 cards.
+
+The following are in progress
+
+Matrox ALT256 at 0xE0 
+Intel 8237 DMA at 0x20-0x2F with channel 3 wired up to the FDC.
+
+Adding a classic ST506 controller would also be useful.
+
+
+RAM is banked in by setting one bit of 0x40. This mirrors the configuration
+of a lot of the banked boards used on S100 and similar systems. The banks
+page out the ROM which is otherwise present repeating through the low 48K
+and which does boot.
+
+Currently there is no UI and no hotkey interface for floppy changing.

@@ -54,5 +54,5 @@ lib765_default_error_function(int debuglevel, char *fmt, va_list ap)
 
 void lib765_register_error_function(lib765_error_function_t ef)
 {
-//	lib765_error_function = ef;
+	lib765_error_function = ef;
 }

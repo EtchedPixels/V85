@@ -4,7 +4,8 @@ An 8085 emulator with the undocumented instructions and flags
 
 ## Caution
 This is a work in progress so some flag emulation and other details may well
-be incorrect. In particular I know DAA is wrong.
+be incorrect. In particular I know the undocumented K and V flags for DAA
+are wrong.
 
 ## Why Another 8085 Emulator
 
