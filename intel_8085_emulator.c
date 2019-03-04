@@ -565,7 +565,7 @@ int i8085_exec(int cycles) {
 			case 0x2F: //CMA - complement A
 				reg8[A] = ~reg8[A];
 				cycles -= 4;
-				/* TODO */
+				/* This does not affect flags */
 				break;
 			case 0x3F: //CMC - complement carry flag
 				reg8[FLAGS] ^= 1;
@@ -670,19 +670,21 @@ int i8085_exec(int cycles) {
 				if (temp16 & 0x4000)
 					temp16 |= 0x8000;
 				i8085_write_reg16(HL, temp16);
-				/* Check K V */
 				cycles -= 7;
 				break;
 			case 0x18: // RDEL
 				/* Affects only CY and V */
 				temp16 = reg16_DE;
-				i8085_write_reg16(DE, (reg16_DE << 1) + test_C());
+				temp8 = test_C();
+				i8085_write_reg16(DE, (temp16 << 1) + temp8);
 				if (temp16 & 0x8000)
 					set_C();
 				else
 					clear_C();
 				cycles -= 10;
-				/* FIXME: how is V affected */
+				/* This seems to be a DAD D,D with carry but
+				   I'm not enitrely sure. FIXME */
+				calc_Vadd16(temp16, temp16 + temp8);
 				break;
 			case 0x20: // RIM
 				temp8 = reg_IM & 0x07;
