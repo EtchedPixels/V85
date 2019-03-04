@@ -94,6 +94,17 @@ void i8085_write(uint16_t addr, uint8_t val)
 		fprintf(stderr, "W%d %04X = %02X\n", banknum, addr, val);
 }
 
+/* We don't currently use the RIM/SIM driven GPIO pins */
+
+int i8085_get_input(void)
+{
+	return 0;
+}
+
+void i8085_set_output(int val)
+{
+}
+
 static int check_chario(void)
 {
 	fd_set i, o;

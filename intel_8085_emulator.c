@@ -688,6 +688,8 @@ int i8085_exec(int cycles) {
 				temp8 = reg_IM & 0x07;
 				if (intpend & INT_RST75)
 					temp8 |= 0x10;
+				temp8 |= i8085_get_input() ? 0x80: 0x00;
+				temp8 |= (intpend & 7)  << 4;
 				reg8[A] = temp8;
 				cycles -= 4;
 				break;
@@ -700,7 +702,8 @@ int i8085_exec(int cycles) {
 					reg_IM = reg8[A] & 0x07;
 				if (reg8[A] & 0x10)
 					intpend &= ~INT_RST75;
-				/* We don't care about the bit bang port */
+				if (reg8[A] & 0x40)
+					i8085_set_output(reg8[A] & 0x80);
 				cycles -= 4;
 				break;
 			case 0x38: // LDSI
