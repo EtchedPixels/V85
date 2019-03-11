@@ -62,9 +62,20 @@ static uint16_t tstate_steps = 150;
 #define TRACE_DMA	128
 #define TRACE_MDRIVE	256
 #define TRACE_RTC	512
+#define TRACE_CPU	1024
 
 static int trace = 0;
 
+
+uint8_t i8085_debug_read(uint16_t addr)
+{
+	uint8_t *p = bankram[banknum] + addr;
+	if (addr >= 0xC000)
+		p = baseram + (addr & 0x3FFF);
+	else if (banknum == 8) 	/* ROM */
+		p = rom + (addr & 0x1FF);
+	return *p;
+}
 
 uint8_t i8085_read(uint16_t addr)
 {
@@ -77,6 +88,7 @@ uint8_t i8085_read(uint16_t addr)
 		fprintf(stderr, "R[%d] %04X = %02X\n", banknum, addr, *p);
 	return *p;
 }
+
 
 void i8085_write(uint16_t addr, uint8_t val)
 {
@@ -1056,6 +1068,9 @@ int main(int argc, char *argv[])
 	   slow stuff and nap for 5ms. */
 
 	cycles = tstate_steps;
+
+	if (trace & TRACE_CPU)
+		i8085_log = stderr;
 
 	while (!done) {
 		int i;
