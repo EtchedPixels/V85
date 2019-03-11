@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include "intel_8085_emulator.h"
 
 #define reg16_PSW (((uint16_t)reg8[A] << 8) | (uint16_t)reg8[FLAGS])
@@ -238,7 +239,7 @@ void calc_Vsub(int8_t val1, int8_t val2, int c)
 
 void calc_K(int8_t r)
 {
-	if ((!!test_C()) ^ !!(r & 0x80))
+	if ((!!test_V()) ^ !!(r & 0x80))
 		set_K();
 	else
 		clear_K();
@@ -347,6 +348,24 @@ void i8085_write_reg16(reg_t reg, uint16_t value) {
 	}
 }
 
+static char *i8085_flags(uint8_t v)
+{
+	static char buf[9];
+	char *fp = "SZKA-PVC";
+	char *t = buf;
+
+	strcpy(buf, "--------");
+
+	while(*fp) {
+		if (v & 0x80)
+			*t = *fp;
+		t++;
+		fp++;
+		v <<= 1;
+	}
+	return buf;
+}
+
 int i8085_exec(int cycles) {
 	uint8_t opcode, temp8, reg, reg2;
 	uint16_t temp16;
@@ -364,11 +383,17 @@ int i8085_exec(int cycles) {
 				i8085_push(reg_PC);
 			reg_PC = 0x24;
 			cycles -= 12; /* Check me */
+			if (i8085_log)
+				fprintf(i8085_log, "NMI taken.\n");
 		/* The others are level except 0x3C which is positive edge.
 		   The 8085 prioritizes so we must do likewise */
 		} else if (INTE && intprotect == 0 && (intpend & ~reg_IM)) {
 			INTE = 0;
 			temp8 = intpend & ~reg_IM;
+
+			if (i8085_log)
+				fprintf(i8085_log, "IRQ taken (%x)\n", temp8);
+
 			if (temp8 & INT_RST75) {
 				/* FIXME: we should temporarily mask not
 				   clear here. We clear in SIM */
@@ -390,7 +415,14 @@ int i8085_exec(int cycles) {
 		intprotect = 0;
 		halted = 0;
 
-		opcode = i8085_read(reg_PC++);
+		opcode = i8085_read(reg_PC);
+		
+		if (i8085_log)
+			fprintf(i8085_log, "%04X : %02x %02X %02X : %6s %02X %04X %04X %04X %04X\n",
+				reg_PC, i8085_debug_read(reg_PC), i8085_debug_read(reg_PC + 1), i8085_debug_read(reg_PC + 2),
+				i8085_flags(reg8[FLAGS]), reg8[A], reg16_BC, reg16_DE, reg16_HL, reg_SP);
+		
+		reg_PC++;
 
 		switch (opcode) {
 			case 0x3A: //LDA a - load A from memory
@@ -1067,9 +1099,11 @@ int i8085_exec(int cycles) {
 				temp16 = (uint16_t)i8085_read(reg_PC) | (((uint16_t)i8085_read(reg_PC + 1)) << 8);
 				if (!test_K()) {
 					reg_PC = temp16;
-					cycles -= 3;
+					cycles -= 10;
+				} else {
+					reg_PC += 2;
+					cycles -= 7;
 				}
-				cycles -= 7;
 				break;
 			case 0xED:
 				reg8[L] = i8085_read(reg16_DE);
@@ -1080,9 +1114,11 @@ int i8085_exec(int cycles) {
 				temp16 = (uint16_t)i8085_read(reg_PC) | (((uint16_t)i8085_read(reg_PC + 1)) << 8);
 				if (!test_K()) {
 					reg_PC = temp16;
-					cycles -= 3;
+					cycles -= 10;
+				} else {
+					reg_PC += 2;
+					cycles -= 7;
 				}
-				cycles -= 7;
 				break;
 			case 0xCD: //CALL a - unconditional call
 				temp16 = (uint16_t)i8085_read(reg_PC) | (((uint16_t)i8085_read(reg_PC + 1)) << 8);

@@ -10,6 +10,7 @@ reg_t;
 
 extern uint8_t i8085_read(uint16_t addr);
 extern void i8085_write(uint16_t addr, uint8_t value);
+extern uint8_t i8085_debug_read(uint16_t addr);
 extern uint8_t i8085_inport(uint8_t port);
 extern void i8085_outport(uint8_t port, uint8_t value);
 extern int i8085_get_input(void);
@@ -37,5 +38,6 @@ extern void i8085_reset();
 
 extern int i8085_exec(int cycles);
 
-#endif
+FILE *i8085_log;
 
+#endif
