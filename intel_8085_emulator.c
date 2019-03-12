@@ -210,9 +210,13 @@ void calc_subAC_borrow(int8_t val1, uint8_t val2) {
 
 void calc_Vadd(int8_t val1, int8_t val2, int c)
 {
+	/* Did adding bits 0-6 together carry into bit 7 ? */
 	uint8_t c6 = ((val1 & 0x7F) + (val2 & 0x7F) + c) & 0x80;
-	uint8_t c7 = (val1 & val2 & 0x80);
-	if (c6 ^ c7)
+	/* Did adding bits 0-7 together carry into bit 8 ? */
+	uint16_t c7 = ((uint16_t)val1 + val2 + c) & 0x100;
+	/* V is the xor of the two carries */
+	/* Annoying C has no ^^ operator */
+	if ((!!c6) ^ (!!c7))
 		set_V();
 	else
 		clear_V();
@@ -222,9 +226,9 @@ void calc_Vadd(int8_t val1, int8_t val2, int c)
 void calc_Vadd16(int16_t val1, int16_t val2)
 {
 	/* Internal carry of the first add */
-	int c = (val1 & val2 & 0x80);
+	int c = ((val1 & 0xFF) + (val2 & 0xFF)) & 0x100;
 	/* Fed into the carry of the following adc */
-	calc_Vadd(val1 >> 8, val2 >> 8, c);
+	calc_Vadd(val1 >> 8, val2 >> 8, !!c);
 }
 
 void calc_Vsub(int8_t val1, int8_t val2, int c)
@@ -235,6 +239,12 @@ void calc_Vsub(int8_t val1, int8_t val2, int c)
 		set_V();
 	else
 		clear_V();
+}
+
+void calc_Vsub16(int16_t val1, int16_t val2)
+{
+	int c = (val1 & 0xFF) < (val2 & 0xFF);
+	calc_Vsub(val1 >> 8, val2 >> 8, c);
 }
 
 void calc_K(int8_t r)
@@ -864,12 +874,15 @@ int i8085_exec(int cycles) {
 			case 0x33:
 				reg = (opcode >> 4) & 3;
 				temp16 = read_RP(reg) + 1;
-				write16_RP(reg, temp16);
 				if (temp16 == 0x8000)
 					set_V();
 				else
 					clear_V();
-				calc_K(temp16 >> 8);
+				if (temp16 == 0x0000)
+					set_K();
+				else
+					clear_K();
+				write16_RP(reg, temp16);
 				cycles -= 6;
 				break;
 			case 0x0B: //DCX RP - decrement register pair
@@ -882,7 +895,10 @@ int i8085_exec(int cycles) {
 					set_V();
 				else
 					clear_V();
-				calc_K(temp16 >> 8);
+				if (temp16 == 0xFFFF)
+					set_K();
+				else
+					clear_K();
 				write16_RP(reg, temp16);
 				cycles -= 6;
 				break;
